@@ -13,6 +13,10 @@ const router = Router();
 // Public
 router.post("/register", userCtrl.register);
 router.post("/login", userCtrl.login);
+router.post("/verify-email", userCtrl.verifyEmail);
+router.post("/resend-otp", userCtrl.resendOtp);
+router.post("/forgot-password", userCtrl.forgotPassword);
+router.post("/reset-password", userCtrl.resetPassword);
 
 // Protected
 router.get("/me", auth, userCtrl.getProfile);

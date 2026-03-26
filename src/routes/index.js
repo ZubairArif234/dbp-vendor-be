@@ -10,11 +10,13 @@
 
 import { Router } from "express";
 import userRoutes from "./user.routes.js";
+import vendorRoutes from "./vendor.routes.js";
 
 const router = Router();
 
 // ─── Mount feature routers ──────────────────────────────────────────────────
 router.use("/users", userRoutes);
+router.use("/vendor", vendorRoutes);
 // router.use("/posts",  postRoutes);   // ← add more here
 // router.use("/orders", orderRoutes);
 

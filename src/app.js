@@ -52,7 +52,7 @@ initSocket(server);
 
 // ─── Start Server ────────────────────────────────────────────────────────────
 async function start() {
-  await connectDB();
+  // await connectDB();
   server.listen(PORT, () => {
     console.log(`Server running on port ${PORT} [${NODE_ENV}]`);
   });
