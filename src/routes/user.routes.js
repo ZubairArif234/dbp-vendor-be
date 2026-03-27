@@ -20,6 +20,7 @@ router.post("/reset-password", userCtrl.resetPassword);
 
 // Protected
 router.get("/me", auth, userCtrl.getProfile);
+router.patch("/update-password", auth, userCtrl.updatePassword);
 
 // Admin only
 router.get("/", auth, authorize("admin"), userCtrl.listUsers);

@@ -43,6 +43,7 @@ export async function createUser({ full_name, email, password }) {
         password: hashedPassword,
         email_verification_token: otp,
         email_verification_token_expires: otpExpiry,
+        status: "pending",
       },
     },
   ]);
@@ -73,20 +74,34 @@ export async function loginUser(email, password) {
 
   const user = users[0];
 
-
-  const isValidPassword = await bcrypt.compare(
-    password,
-    user.fields.password
-  );
+  const isValidPassword = await bcrypt.compare(password, user.fields.password);
 
   if (!isValidPassword) {
     throw new Error("Invalid email or password");
   }
 
+  // 🚫 Block banned accounts
+  if (user.fields.is_banned === true) {
+    const err = new Error(
+      "Your account has been banned. Please contact support.",
+    );
+    err.status = 403;
+    throw err;
+  }
+
+  // 🚫 Block rejected vendor accounts
+  if (user.fields.status === "rejected") {
+    const err = new Error(
+      "Your vendor application has been rejected. Please contact support.",
+    );
+    err.status = 403;
+    throw err;
+  }
+
   const token = jwt.sign(
     { id: user.id, role: user.fields.role || "user" },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { expiresIn: JWT_EXPIRES_IN },
   );
 
   return {
@@ -96,7 +111,7 @@ export async function loginUser(email, password) {
       email: user.fields.email,
       is_profile_completed: user.fields.is_profile_completed,
       is_email_verified: user.fields.is_email_verified,
-      is_approved_by_admin: user.fields.is_approved_by_admin,
+      status: user.fields.status,
       profile_image: user.fields.profile_image,
     },
     role: user.fields.role,
@@ -122,10 +137,7 @@ export async function verifyEmail({ email, otp }) {
     throw new Error("Invalid OTP");
   }
 
-  if (
-    new Date() >
-    new Date(user.fields.email_verification_token_expires)
-  ) {
+  if (new Date() > new Date(user.fields.email_verification_token_expires)) {
     throw new Error("OTP expired");
   }
 
@@ -234,10 +246,7 @@ export async function resetPassword({ email, otp, newPassword }) {
     throw new Error("Invalid OTP");
   }
 
-  if (
-    new Date() >
-    new Date(user.fields.password_reset_token_expires)
-  ) {
+  if (new Date() > new Date(user.fields.password_reset_token_expires)) {
     throw new Error("OTP expired");
   }
 
@@ -295,4 +304,38 @@ export async function listUsers({ page = 1, limit = 20 }) {
   }));
 
   return { data, total: data.length, page: 1, limit: Number(limit) };
+}
+
+export async function updatePassword(userId, { currentPassword, newPassword }) {
+  // 1. Fetch user
+  const user = await base(TABLE_NAME).find(userId);
+  if (!user) {
+    const err = new Error("User not found");
+    err.status = 404;
+    throw err;
+  }
+
+  // 2. Verify current password
+  const isValidPassword = await bcrypt.compare(
+    currentPassword,
+    user.fields.password,
+  );
+  if (!isValidPassword) {
+    const err = new Error("Current password is incorrect");
+    err.status = 400;
+    throw err;
+  }
+
+  // 3. Hash new password
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  // 4. Update in Airtable
+  await base(TABLE_NAME).update([
+    {
+      id: userId,
+      fields: { password: hashedPassword },
+    },
+  ]);
+
+  return { success: true };
 }

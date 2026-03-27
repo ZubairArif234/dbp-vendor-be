@@ -135,3 +135,4 @@ export async function deleteVendorProfile(id) {
   const deletedRecords = await base(TABLE_NAME).destroy([id]);
   return deletedRecords[0].id === id;
 }
+
