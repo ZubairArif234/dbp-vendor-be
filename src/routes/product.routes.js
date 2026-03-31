@@ -9,13 +9,15 @@ router.post("/", auth, controller.create);
 
 // GET ALL (filters supported)
 router.get("/", controller.getAll);
-
 // GET MINE PRODUCTS (filters supported)
 router.get("/mine", auth, controller.getMineProducts);
+// GET SINGLE
+router.get("/:id", controller.getSingle);
 
 // UPDATE
-router.put("/:id", controller.update);
-
+router.patch("/:id", auth, controller.update);
+// UPDATE PRODUCT STATUS
+router.patch("/status/:id", controller.updateProductStatus);
 // UPDATE STATUS
 router.patch("/:id/status", controller.updateStatus);
 

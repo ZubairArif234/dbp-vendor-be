@@ -14,7 +14,7 @@ export const create = async (req, res) => {
 // UPDATE
 export const update = async (req, res) => {
   try {
-    const data = await service.updateProduct(req.params.id, req.body);
+    const data = await service.updateProduct(req.params.id, req.body, req.user);
     res.json({ success: true, data });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -31,7 +31,31 @@ export const getAll = async (req, res) => {
   }
 };
 
-// GET (FILTERS)
+//GET SINGLE
+export const getSingle = async (req, res) => {
+  try {
+    const data = await service.getProduct(req.params.id);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const updateProductStatus = async (req, res) => {
+  try {
+    const { status, notes } = req.body;
+    const data = await service.updateProductStatus(
+      req.params.id,
+      status,
+      notes,
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// GET MINE PRODUCTS (FILTERS)
 export const getMineProducts = async (req, res) => {
   try {
     const user_id = req.user.id;

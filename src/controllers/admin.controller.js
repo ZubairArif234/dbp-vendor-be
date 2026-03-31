@@ -49,6 +49,7 @@ export async function updateVendorApproval(req, res) {
  */
 export async function banUnbanVendor(req, res) {
   try {
+    const { id } = req.params;
     const { is_banned } = req.body;
 
     const updated = await adminService.banUnbanVendor(id, is_banned);
