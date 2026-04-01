@@ -41,6 +41,29 @@ export async function getVendorProfile(req, res) {
 }
 
 /**
+ * Get my vendor profile (using auth token user id)
+ */
+export async function getMyProfile(req, res) {
+  try {
+    const user_id = req.user.id;
+    console.log("🚀 ~ getMyProfile ~ user_id:", user_id);
+    const profile = await vendorService.getVendorProfileByUserId(user_id);
+
+    if (!profile) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Vendor profile not found" });
+    }
+
+    res.json({ success: true, data: profile });
+  } catch (err) {
+    res
+      .status(err.status || 500)
+      .json({ success: false, message: err.message });
+  }
+}
+
+/**
  * List all vendor profiles (optionally filter by logged-in user)
  */
 export async function listVendorProfiles(req, res) {

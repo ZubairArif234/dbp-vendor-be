@@ -59,8 +59,8 @@ export async function createVendorProfile({
 
   // 4. Return the new vendor profile
   return {
-    id: newProfile.fields.id || newProfile.id,
     ...newProfile.fields,
+    id: newProfile.id,
   };
 }
 
@@ -71,8 +71,8 @@ export async function getVendorProfileById(id) {
   try {
     const record = await base(TABLE_NAME).find(id);
     return {
-      id: record.id,
       ...record.fields,
+      id: record.id,
     };
   } catch (err) {
     if (err.statusCode === 404) {
@@ -82,6 +82,39 @@ export async function getVendorProfileById(id) {
     }
     throw err;
   }
+}
+
+/**
+ * Get a vendor profile by User ID
+ */
+export async function getVendorProfileByUserId(userId) {
+  let userUUID = userId;
+  try {
+    // If userId is the Airtable Record ID (starts with rec), get the UUID
+    if (userId.startsWith('rec')) {
+      const userRecord = await base(USER_TABLE_NAME).find(userId);
+      if (userRecord && userRecord.fields.id) {
+        userUUID = userRecord.fields.id;
+      }
+    }
+  } catch (err) {
+    // Ignore and fallback to trying userId directly
+  }
+
+  const filterFormula = `SEARCH('${userUUID}', {user_id})`;
+  const records = await base(TABLE_NAME)
+    .select({ filterByFormula: filterFormula, maxRecords: 1 })
+    .firstPage();
+
+  if (records.length === 0) {
+    return null; /* No profile found */
+  }
+
+  const record = records[0];
+  return {
+    ...record.fields,
+    id: record.id,
+  };
 }
 
 /**
@@ -98,8 +131,8 @@ export async function listVendorProfiles({ user_id, page = 1, limit = 20 }) {
     .firstPage();
 
   const data = records.map((r) => ({
-    id: r.id,
     ...r.fields,
+    id: r.id,
   }));
 
   return {
@@ -123,8 +156,8 @@ export async function updateVendorProfile(id, updates) {
 
   const updatedProfile = records[0];
   return {
-    id: updatedProfile.id,
     ...updatedProfile.fields,
+    id: updatedProfile.id,
   };
 }
 

@@ -149,6 +149,27 @@ export async function getProfile(req, res) {
   }
 }
 
+// ✅ Update Profile
+export async function updateProfile(req, res) {
+  try {
+    const userId = req.user.id;
+    const updates = req.body;
+    
+    const updatedUser = await userService.updateProfile(userId, updates);
+    
+    res.json({
+      success: true,
+      message: "Profile updated successfully",
+      data: updatedUser,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+}
+
 // ✅ List Users
 export async function listUsers(req, res) {
   try {

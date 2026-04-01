@@ -274,6 +274,7 @@ export async function getUserById(id) {
       full_name: user.fields.full_name,
       email: user.fields.email,
       role: user.fields.role,
+      bio: user.fields.bio,
       profile_image: user.fields.profile_image,
     };
   } catch (err) {
@@ -282,6 +283,40 @@ export async function getUserById(id) {
       error.status = 404;
       throw error;
     }
+    throw err;
+  }
+}
+
+export async function updateProfile(id, updates) {
+  try {
+    // We only allow updating full_name and email right now
+    const fieldsToUpdate = {};
+    if (updates.full_name) fieldsToUpdate.full_name = updates.full_name;
+    if (updates.email) fieldsToUpdate.email = updates.email;
+    if (updates.bio) fieldsToUpdate.bio = updates.bio;
+    if (updates.profile_image) fieldsToUpdate.profile_image = updates.profile_image;
+    
+    if (Object.keys(fieldsToUpdate).length === 0) {
+      return await getUserById(id);
+    }
+    
+    const updatedRecords = await base(TABLE_NAME).update([
+      {
+        id,
+        fields: fieldsToUpdate,
+      },
+    ]);
+    
+    const user = updatedRecords[0];
+    return {
+      id: user.id,
+      full_name: user.fields.full_name,
+      email: user.fields.email,
+      role: user.fields.role,
+      bio: user.fields.bio,
+      profile_image: user.fields.profile_image,
+    };
+  } catch (err) {
     throw err;
   }
 }
