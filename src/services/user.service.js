@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { base } from "../config/airtable.js";
 import { JWT_SECRET, JWT_EXPIRES_IN } from "../config/env.js";
+import sendEmail from "../utils/sendEmail.js";
 
 const TABLE_NAME = "users";
 
@@ -49,8 +50,20 @@ export async function createUser({ full_name, email, password }) {
   ]);
 
   const newUser = records[0];
+  //7. Send OTP to user's email
+  await sendEmail({
+    to: newUser.fields.email,
+    subject: "Verify Your Email",
+    template: "otp.email",
+    data: {
+      userName: newUser.fields.full_name,
+      otp: newUser.fields.email_verification_token.trim(),
+      expiryMinutes: 10,
+      companyName: "DBP Vendor Portal",
+    },
+  });
 
-  // 7. Return safe user data + OTP (for email sending)
+  // 8. Return safe user data + OTP (for email sending)
   return {
     id: newUser.fields.id || newUser.id,
     name: newUser.fields.full_name,
@@ -294,19 +307,20 @@ export async function updateProfile(id, updates) {
     if (updates.full_name) fieldsToUpdate.full_name = updates.full_name;
     if (updates.email) fieldsToUpdate.email = updates.email;
     if (updates.bio) fieldsToUpdate.bio = updates.bio;
-    if (updates.profile_image) fieldsToUpdate.profile_image = updates.profile_image;
-    
+    if (updates.profile_image)
+      fieldsToUpdate.profile_image = updates.profile_image;
+
     if (Object.keys(fieldsToUpdate).length === 0) {
       return await getUserById(id);
     }
-    
+
     const updatedRecords = await base(TABLE_NAME).update([
       {
         id,
         fields: fieldsToUpdate,
       },
     ]);
-    
+
     const user = updatedRecords[0];
     return {
       id: user.id,
