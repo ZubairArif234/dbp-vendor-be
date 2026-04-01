@@ -92,3 +92,50 @@ export async function updateVendorMarginAndNote(req, res) {
       .json({ success: false, message: err.message });
   }
 }
+
+/**
+ * GET /api/admin/vendors/options
+ */
+export async function getApprovedVendorsOptions(req, res) {
+  try {
+    const result = await adminService.getApprovedVendorsOptions();
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res
+      .status(err.status || 500)
+      .json({ success: false, message: err.message });
+  }
+}
+
+// ─── Vendor Statuses ─────────────────────────────────────────────────────────
+
+export async function getVendorStatuses(req, res) {
+  try {
+    const statuses = await adminService.getVendorStatuses();
+    res.json({ success: true, data: statuses });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+
+export async function createVendorStatus(req, res) {
+  try {
+    const { label, color } = req.body;
+    if (!label) throw new Error("Label is required");
+    const newStatus = await adminService.createVendorStatus({ label, color });
+    res.status(201).json({ success: true, data: newStatus });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+
+export async function updateVendorStatus(req, res) {
+  try {
+    const { id } = req.params;
+    const { label, color, isArchived } = req.body;
+    const updatedStatus = await adminService.updateVendorStatus(id, { label, color, isArchived });
+    res.json({ success: true, data: updatedStatus });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}

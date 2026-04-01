@@ -19,8 +19,13 @@ router.use(auth, authorize("admin"));
 
 // ─── Vendor Management ───────────────────────────────────────────────────────
 router.get("/vendors", adminController.adminGetVendors);
+router.get("/vendors/options", adminController.getApprovedVendorsOptions);
 router.patch("/vendors/:id/approval", adminController.updateVendorApproval);
 router.patch("/vendors/:id/ban", adminController.banUnbanVendor);
 router.patch("/vendors/:id/details", adminController.updateVendorMarginAndNote);
 
+// ─── Vendor Statuses ─────────────────────────────────────────────────────────
+router.get("/vendor-statuses", adminController.getVendorStatuses);
+router.post("/vendor-statuses", adminController.createVendorStatus);
+router.patch("/vendor-statuses/:id", adminController.updateVendorStatus);
 export default router;

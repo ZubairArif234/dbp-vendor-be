@@ -1,7 +1,9 @@
 import { base } from "../config/airtable.js";
+import { v4 as uuidv4 } from "uuid";
 
 const VENDOR_TABLE_NAME = "vendor_profile";
 const USER_TABLE_NAME = "users";
+const VENDOR_STATUS_TABLE_NAME = "vendor_statuses";
 
 /**
  * Admin Get Vendors
@@ -153,21 +155,13 @@ export async function getVendors({
  */
 export async function updateVendorApproval(id, approval) {
   if (!approval) {
-    const err = new Error(
-      "approval field is required (approved | rejected | pending)",
-    );
+    const err = new Error("approval field is required");
     err.status = 400;
     throw err;
   }
 
-  const VALID = ["approved", "rejected", "pending"];
-  if (!VALID.includes(approval)) {
-    const err = new Error(
-      `Invalid approval value. Must be one of: ${VALID.join(", ")}`,
-    );
-    err.status = 400;
-    throw err;
-  }
+  // Support dynamic statuses (no longer hardcoded to just 3)
+
 
   let targetUserId = id;
   try {
@@ -286,5 +280,106 @@ export async function updateVendorMarginAndNote(id, { margin, note }) {
   return {
     id: updatedRecords[0].fields.id, // Keep your custom UUID
     ...updatedRecords[0].fields,
+  };
+}
+
+/**
+ * Get all approved vendors as options for select
+ * @returns {Promise<Array<{id: string, name: string}>>}
+ */
+export async function getApprovedVendorsOptions() {
+  const records = await base(USER_TABLE_NAME)
+    .select({
+      filterByFormula: `AND({role} = "vendor", {status} = "approved")`,
+      fields: ["full_name", "id"],
+    })
+    .all();
+
+  return records.map((r) => ({
+    id: r.fields.id, // Return custom UUID for frontend filtering
+    name: r.fields.full_name,
+  }));
+}
+
+// ─── Vendor Statuses Management ──────────────────────────────────────────────
+
+/**
+ * Get all vendor statuses
+ * @returns {Promise<Array<{id: string, label: string, color: string, isArchived: boolean}>>}
+ */
+export async function getVendorStatuses() {
+  const records = await base(VENDOR_STATUS_TABLE_NAME).select().all();
+  return records.map((r) => ({
+    id: r.fields.id || r.id,
+    label: r.fields.label || "",
+    color: r.fields.color || "gray",
+    isArchived: r.fields.is_archived || false,
+    _airtableId: r.id, // Keep raw Airtable ID for updates
+  }));
+}
+
+/**
+ * Create a new vendor status
+ * @param {{label: string, color: string}} data
+ */
+export async function createVendorStatus(data) {
+  const newId = uuidv4();
+  const record = await base(VENDOR_STATUS_TABLE_NAME).create([
+    {
+      fields: {
+        id: newId,
+        label: data.label,
+        color: data.color,
+        is_archived: false,
+      },
+    },
+  ]);
+
+  return {
+    id: record[0].fields.id || record[0].id,
+    label: record[0].fields.label,
+    color: record[0].fields.color,
+    isArchived: record[0].fields.is_archived || false,
+    _airtableId: record[0].id,
+  };
+}
+
+/**
+ * Update an existing vendor status
+ * @param {string} id - The _airtableId or custom uuid of the status
+ * @param {{label?: string, color?: string, isArchived?: boolean}} data
+ */
+export async function updateVendorStatus(id, data) {
+  // First find the raw Airtable record ID
+  const records = await base(VENDOR_STATUS_TABLE_NAME)
+    .select({
+      filterByFormula: `OR(RECORD_ID() = '${id}', {id} = '${id}')`,
+    })
+    .firstPage();
+
+  if (records.length === 0) {
+    throw new Error(`Status not found: ${id}`);
+  }
+
+  const airtableRecordId = records[0].id;
+
+  const fields = {};
+  if (data.label !== undefined) fields.label = data.label;
+  if (data.color !== undefined) fields.color = data.color;
+  if (data.isArchived !== undefined) fields.is_archived = data.isArchived;
+
+  const updatedRecord = await base(VENDOR_STATUS_TABLE_NAME).update([
+    {
+      id: airtableRecordId,
+      fields,
+    },
+  ]);
+
+  return {
+    id: updatedRecord[0].fields.id || updatedRecord[0].id,
+    label: updatedRecord[0].fields.label,
+    color: updatedRecord[0].fields.color,
+    isArchived: updatedRecord[0].fields.is_archived || false,
+    _airtableId: updatedRecord[0].id,
   };
 }

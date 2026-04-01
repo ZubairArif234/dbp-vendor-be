@@ -199,7 +199,7 @@ export async function getProducts({
 
   // ✅ Status filter — use TRUE()/FALSE() for Airtable checkbox fields
   if (status !== undefined) {
-    filters.push(`{forSale} = ${status ? "TRUE()" : "FALSE()"}`);
+    filters.push(`{status} = "${status}"`);
   }
 
   // 📦 Category filter
@@ -207,9 +207,11 @@ export async function getProducts({
     filters.push(`{category} = "${category}"`);
   }
 
-  // 🏪 Vendor filter — match against the linked user_id field
+  // 🏪 Vendor filter — match against the lookup field pull from user_id
   if (supplier) {
-    filters.push(`FIND("${supplier}", ARRAYJOIN({user_id}))`);
+    // supplier is the custom UUID. Matching against the lookup field {id (from user_id)}
+    // is more reliable than matching against the linked record field itself.
+    filters.push(`FIND("${supplier}", ARRAYJOIN({id (from user_id)}))`);
   }
 
   // 📉 Out of stock filter
