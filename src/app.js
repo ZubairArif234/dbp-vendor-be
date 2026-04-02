@@ -34,7 +34,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(process.cwd(), "public")));
 
 // ─── API Routes ──────────────────────────────────────────────────────────────
-app.use("/api", routes);
+app.use("/", routes);
 
 // ─── Health Check ────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) =>
