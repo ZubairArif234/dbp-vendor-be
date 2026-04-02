@@ -6,6 +6,7 @@
  */
 
 import * as adminService from "../services/admin.service.js";
+import * as productService from "../services/product.service.js";
 
 /**
  * GET /api/admin/vendors
@@ -137,5 +138,16 @@ export async function updateVendorStatus(req, res) {
     res.json({ success: true, data: updatedStatus });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, message: err.message });
+  }
+}
+export async function updateProduct(req, res) {
+  try {
+    const { id } = req.params;
+    const updated = await productService.updateProduct(id, req.body, req.user);
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res
+      .status(err.status || 500)
+      .json({ success: false, message: err.message });
   }
 }

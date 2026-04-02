@@ -28,4 +28,5 @@ router.patch("/vendors/:id/details", adminController.updateVendorMarginAndNote);
 router.get("/vendor-statuses", adminController.getVendorStatuses);
 router.post("/vendor-statuses", adminController.createVendorStatus);
 router.patch("/vendor-statuses/:id", adminController.updateVendorStatus);
+router.patch("/products/:id", adminController.updateProduct);
 export default router;

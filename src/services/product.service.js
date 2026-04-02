@@ -10,10 +10,20 @@ const USERS_TABLE = "users";
 const VENDOR_TABLE = "vendor_profile";
 
 // Helper to format Airtable record
-const mapRecord = (rec) => ({
-  ...rec.fields,
-  id: rec.id,
-});
+const mapRecord = (rec) => {
+  const fields = { ...rec.fields };
+  if (typeof fields.thumbnail === "string") {
+    try {
+      fields.thumbnail = JSON.parse(fields.thumbnail);
+    } catch (e) {
+      fields.thumbnail = [];
+    }
+  }
+  return {
+    ...fields,
+    id: rec.id,
+  };
+};
 
 const generateSKU = (name) => {
   return `${name.slice(0, 4).toUpperCase()}-${Date.now()}`;
@@ -104,23 +114,15 @@ export async function updateProduct(id, data, user) {
   );
 
   // 1️⃣ Determine if sensitive fields are being updated (anything except avail_today in variants)
-  // 1️⃣ Determine if sensitive fields are being updated (anything except avail_today in variants)
   const productFields = Object.keys(productData).filter((k) => k !== "id");
   const hasProductUpdates = productFields.length > 0;
 
   // Check if any variant field other than 'id' or 'avail_today' is updated
   const hasOtherVariantUpdates = variants.some((v) =>
-    Object.keys(v).some((k) => k !== "id" && k !== "avail_today"),
+    v && typeof v === "object" && Object.keys(v).some((k) => k !== "id" && k !== "_id" && k !== "avail_today"),
   );
 
-  console.log(
-    "🚀 ~ updateProduct ~ hasOtherVariantUpdates:",
-    hasOtherVariantUpdates,
-    variants,
-  );
-
-  // 2️⃣ Only set status to 'under review' if user is vendor AND
-  // there are updates to product fields OR updates to variant fields other than avail_today
+  // 2️⃣ Only set status to 'under review' if user is vendor
   if (
     user?.role === "vendor" &&
     (hasProductUpdates || hasOtherVariantUpdates)
@@ -137,10 +139,10 @@ export async function updateProduct(id, data, user) {
         ...(productData.thumbnail && {
           thumbnail: JSON.stringify(productData.thumbnail),
         }),
-        status: cleanFields.status || "under review",
+        status: cleanFields.status || productData.status || "under review",
         min_amount: Number(productData.min_amount),
         low_avail_limit: Number(productData.low_avail_limit),
-        margin: Number(productData.margin_override) || 40,
+        margin: Number(productData.margin) || 40,
       },
     },
   ]);
