@@ -208,6 +208,9 @@ export async function getProducts({
   // ✅ Status filter — use TRUE()/FALSE() for Airtable checkbox fields
   if (status !== undefined) {
     filters.push(`{status} = "${status}"`);
+  } else {
+    // 🛡️ SECURITY: By default, never show 'draft' products to admins in the general list.
+    filters.push(`NOT({status} = "draft")`);
   }
 
   // 📦 Category filter
@@ -233,7 +236,17 @@ export async function getProducts({
       : `AND(${filters.join(",")})`
     : "";
   // 1️⃣ Products
-  const records = await base(TABLE).select({ filterByFormula: formula }).all();
+  const records = await base(TABLE)
+    .select({
+      filterByFormula: formula,
+      sort: [
+        {
+          field: "created_at", // or your actual date field
+          direction: "desc", // newest first
+        },
+      ],
+    })
+    .all();
 
   const total = records.length;
   const totalPages = Math.ceil(total / limit);
