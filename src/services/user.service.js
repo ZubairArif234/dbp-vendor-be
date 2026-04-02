@@ -58,6 +58,8 @@ export async function createUser({ full_name, email, password }) {
     data: {
       userName: newUser.fields.full_name,
       otp: newUser.fields.email_verification_token.trim(),
+      title: "Verify Your Email",
+      message: `Complete your registration by entering the verification code below. This code is valid for <strong>10 minutes</strong>.`,
       expiryMinutes: 10,
       companyName: "DBP Vendor Portal",
     },
@@ -194,8 +196,8 @@ export async function resendOtp({ email, type }) {
     };
   } else if (type === "forgot") {
     fieldsToUpdate = {
-      reset_password_token: otp,
-      reset_password_token_expires: expiry,
+      password_reset_token: otp,
+      password_reset_token_expires: expiry,
     };
   } else {
     throw new Error("Invalid type");
@@ -208,7 +210,25 @@ export async function resendOtp({ email, type }) {
     },
   ]);
 
-  return { otp }; // send via email
+  // Send Email
+  await sendEmail({
+    to: user.fields.email,
+    subject: type === "verify" ? "Verify Your Email" : "Password Reset Code",
+    template: "otp.email",
+    data: {
+      userName: user.fields.full_name,
+      otp: otp,
+      title: type === "verify" ? "Verify Your Email" : "Reset Your Password",
+      message:
+        type === "verify"
+          ? `Complete your verification by entering the code below. Valid for <strong>10 minutes</strong>.`
+          : `We received a request to reset your password. Use the code below to proceed. Valid for <strong>10 minutes</strong>.`,
+      expiryMinutes: 10,
+      companyName: "DBP Vendor Portal",
+    },
+  });
+
+  return { success: true };
 }
 
 export async function forgotPassword(email) {
@@ -238,7 +258,22 @@ export async function forgotPassword(email) {
     },
   ]);
 
-  return { otp };
+  // Send Email
+  await sendEmail({
+    to: user.fields.email,
+    subject: "Password Reset Code",
+    template: "otp.email",
+    data: {
+      userName: user.fields.full_name,
+      otp: otp,
+      title: "Reset Your Password",
+      message: `We received a request to reset your password. Use the code below to proceed. Valid for <strong>10 minutes</strong>.`,
+      expiryMinutes: 10,
+      companyName: "DBP Vendor Portal",
+    },
+  });
+
+  return { success: true };
 }
 
 export async function resetPassword({ email, otp, newPassword }) {

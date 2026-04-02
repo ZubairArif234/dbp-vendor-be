@@ -45,6 +45,7 @@ export async function createProduct(data, user_id) {
         min_amount: Number(productData.min_amount),
         low_avail_limit: Number(productData.low_avail_limit),
         sku: generateSKU(productData.product_name),
+        margin: Number(productData.margin),
       },
     },
   ]);

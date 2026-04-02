@@ -42,7 +42,9 @@ export async function getVendors({
 
   const fetchCount = Number(page) * Number(limit);
 
-  const query = { maxRecords: fetchCount };
+  const query = {
+    maxRecords: fetchCount,
+  };
 
   if (filterFormula) {
     query.filterByFormula = filterFormula;
@@ -86,6 +88,12 @@ export async function getVendors({
         "is_profile_completed",
         "is_email_verified",
         "created_at",
+      ],
+      sort: [
+        {
+          field: "created_at", // or your actual date field
+          direction: "desc", // newest first
+        },
       ],
     })
     .firstPage();
@@ -161,7 +169,6 @@ export async function updateVendorApproval(id, approval) {
   }
 
   // Support dynamic statuses (no longer hardcoded to just 3)
-
 
   let targetUserId = id;
   try {
@@ -239,12 +246,17 @@ export async function updateVendorDetails(id, details) {
   // Map frontend fields to Airtable fields
   if (details.name !== undefined) fieldsToUpdate.vendor_name = details.name;
   if (details.summary !== undefined) fieldsToUpdate.overview = details.summary;
-  if (details.contact !== undefined) fieldsToUpdate.contact_name = details.contact;
-  if (details.phone !== undefined) fieldsToUpdate.business_phone = details.phone;
+  if (details.contact !== undefined)
+    fieldsToUpdate.contact_name = details.contact;
+  if (details.phone !== undefined)
+    fieldsToUpdate.business_phone = details.phone;
   if (details.website !== undefined) fieldsToUpdate.website = details.website;
-  if (details.address !== undefined) fieldsToUpdate.office_address = details.address;
-  if (details.deliveryType !== undefined) fieldsToUpdate.delivery_type = details.deliveryType;
-  if (details.logistics !== undefined) fieldsToUpdate.logistics_details = details.logistics;
+  if (details.address !== undefined)
+    fieldsToUpdate.office_address = details.address;
+  if (details.deliveryType !== undefined)
+    fieldsToUpdate.delivery_type = details.deliveryType;
+  if (details.logistics !== undefined)
+    fieldsToUpdate.logistics_details = details.logistics;
 
   if (details.margin !== undefined) {
     const numMargin = Number(details.margin);
