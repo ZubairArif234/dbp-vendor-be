@@ -147,3 +147,15 @@ export async function updateProduct(req, res) {
       .json({ success: false, message: err.message });
   }
 }
+
+export async function deleteProduct(req, res) {
+  try {
+    const { id } = req.params;
+    await productService.deleteProduct(id);
+    res.json({ success: true, message: "Product deleted successfully" });
+  } catch (err) {
+    res
+      .status(err.status || 500)
+      .json({ success: false, message: err.message });
+  }
+}

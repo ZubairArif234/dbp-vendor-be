@@ -118,8 +118,13 @@ export async function updateProduct(id, data, user) {
   const hasProductUpdates = productFields.length > 0;
 
   // Check if any variant field other than 'id' or 'avail_today' is updated
-  const hasOtherVariantUpdates = variants.some((v) =>
-    v && typeof v === "object" && Object.keys(v).some((k) => k !== "id" && k !== "_id" && k !== "avail_today"),
+  const hasOtherVariantUpdates = variants.some(
+    (v) =>
+      v &&
+      typeof v === "object" &&
+      Object.keys(v).some(
+        (k) => k !== "id" && k !== "_id" && k !== "avail_today",
+      ),
   );
 
   // 2️⃣ Only set status to 'under review' if user is vendor
@@ -395,11 +400,22 @@ export async function getMineProducts({
     }
   }
 
+  const vendorRecords = await base(VENDOR_TABLE)
+    .select({
+      filterByFormula: `FIND("${user_id}", ARRAYJOIN({user_id}))`,
+      maxRecords: 1,
+    })
+    .firstPage();
+  const vendorProfile = vendorRecords.length
+    ? mapRecord(vendorRecords[0])
+    : null;
+
   // 9️⃣ Merge — use Airtable rec ID to look up, but product.id is mapped UUID
   const data = paginated.map((rawRecord) => {
     const product = mapRecord(rawRecord);
     return {
       ...product,
+      vendorProfile,
       variants: variantsByProduct[rawRecord.id] || [], // ✅ rawRecord.id = rec...
     };
   });
@@ -416,12 +432,15 @@ export async function updateProductStatus(id, status, notes = "") {
   if (!id) throw new Error("Product ID is required");
 
   const VALID_STATUSES = [
+    "draft",
+    "submitted",
     "under review",
-    "need fix",
+    "needs fix",
     "approved",
     "exported",
     "confirmed",
     "archived",
+    "request delete",
   ];
 
   if (!VALID_STATUSES.includes(status.toLowerCase())) {
@@ -464,12 +483,28 @@ export async function getProduct(id) {
     return linkedProducts.includes(record.id); // ✅ raw rec... ID
   });
 
+  // 2.5️⃣ Fetch vendor profile
+  const userId = record.fields.user_id?.[0]; // Airtable rec ID
+  let vendorProfile = null;
+  if (userId) {
+    const vendorRecords = await base(VENDOR_TABLE)
+      .select({
+        filterByFormula: `FIND("${userId}", ARRAYJOIN({user_id}))`,
+        maxRecords: 1,
+      })
+      .firstPage();
+    if (vendorRecords.length > 0) {
+      vendorProfile = mapRecord(vendorRecords[0]);
+    }
+  }
+
   // 3️⃣ Merge
   const product = mapRecord(record);
   const variants = matchedVariants.map(mapRecord);
 
   return {
     ...product,
+    vendorProfile,
     variants,
   };
 }
