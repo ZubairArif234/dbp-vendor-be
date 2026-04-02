@@ -227,7 +227,7 @@ export async function banUnbanVendor(id, ban) {
   };
 }
 
-export async function updateVendorMarginAndNote(id, { margin, note }) {
+export async function updateVendorDetails(id, details) {
   if (!id) {
     const err = new Error("Vendor ID is required");
     err.status = 400;
@@ -236,41 +236,50 @@ export async function updateVendorMarginAndNote(id, { margin, note }) {
 
   const fieldsToUpdate = {};
 
-  if (margin !== undefined) {
-    const numMargin = Number(margin);
-    if (isNaN(numMargin) || numMargin < 0 || numMargin > 99) {
-      const err = new Error("Margin must be a valid number (0–99)");
-      err.status = 400;
-      throw err;
+  // Map frontend fields to Airtable fields
+  if (details.name !== undefined) fieldsToUpdate.vendor_name = details.name;
+  if (details.summary !== undefined) fieldsToUpdate.overview = details.summary;
+  if (details.contact !== undefined) fieldsToUpdate.contact_name = details.contact;
+  if (details.phone !== undefined) fieldsToUpdate.business_phone = details.phone;
+  if (details.website !== undefined) fieldsToUpdate.website = details.website;
+  if (details.address !== undefined) fieldsToUpdate.office_address = details.address;
+  if (details.deliveryType !== undefined) fieldsToUpdate.delivery_type = details.deliveryType;
+  if (details.logistics !== undefined) fieldsToUpdate.logistics_details = details.logistics;
+
+  if (details.margin !== undefined) {
+    const numMargin = Number(details.margin);
+    if (!isNaN(numMargin) && numMargin >= 0 && numMargin <= 99) {
+      fieldsToUpdate.margin = numMargin;
     }
-    fieldsToUpdate.margin = numMargin;
   }
 
-  if (note !== undefined) {
-    fieldsToUpdate.notes = note.trim();
+  if (details.note !== undefined) {
+    fieldsToUpdate.notes = details.note.trim();
   }
 
   if (Object.keys(fieldsToUpdate).length === 0) {
-    const err = new Error("Must provide either margin or note to update");
+    const err = new Error("No valid fields provided for update");
     err.status = 400;
     throw err;
   }
 
-  // ✅ Find internal Airtable record ID using your custom UUID
-  const records = await base(VENDOR_TABLE_NAME)
-    .select({
-      filterByFormula: `{id} = "${id}"`,
-      maxRecords: 1,
-    })
-    .firstPage();
+  // ✅ Find internal Airtable record ID using your custom UUID or Airtable Record ID
+  let airtableRecordId = id;
+  if (!id.startsWith("rec")) {
+    const records = await base(VENDOR_TABLE_NAME)
+      .select({
+        filterByFormula: `{id} = "${id}"`,
+        maxRecords: 1,
+      })
+      .firstPage();
 
-  if (records.length === 0) {
-    const err = new Error("Vendor profile not found");
-    err.status = 404;
-    throw err;
+    if (records.length === 0) {
+      const err = new Error("Vendor profile not found");
+      err.status = 404;
+      throw err;
+    }
+    airtableRecordId = records[0].id;
   }
-
-  const airtableRecordId = records[0].id;
 
   // ✅ Update record
   const updatedRecords = await base(VENDOR_TABLE_NAME).update([
@@ -278,7 +287,7 @@ export async function updateVendorMarginAndNote(id, { margin, note }) {
   ]);
 
   return {
-    id: updatedRecords[0].fields.id, // Keep your custom UUID
+    id: updatedRecords[0].fields.id || updatedRecords[0].id,
     ...updatedRecords[0].fields,
   };
 }

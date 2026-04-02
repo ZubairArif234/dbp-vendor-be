@@ -74,17 +74,13 @@ export async function banUnbanVendor(req, res) {
 
 /**
  * PATCH /api/admin/vendors/:id/details
- * Body: { margin?: number, note?: string }
+ * Body: { margin?: number, note?: string, ...any profile fields }
  */
 export async function updateVendorMarginAndNote(req, res) {
   try {
     const { id } = req.params;
-    const { margin, note } = req.body;
 
-    const updated = await adminService.updateVendorMarginAndNote(id, {
-      margin,
-      note,
-    });
+    const updated = await adminService.updateVendorDetails(id, req.body);
 
     res.json({ success: true, data: updated });
   } catch (err) {
