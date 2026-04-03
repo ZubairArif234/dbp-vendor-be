@@ -91,7 +91,7 @@ export const updateStatus = async (req, res) => {
 // DELETE
 export const remove = async (req, res) => {
   try {
-    await service.deleteProduct(req.params.id);
+    await service.deleteProduct(req.params.id, req.user);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -166,17 +166,21 @@ export async function updateProduct(id, data, user) {
           thumbnail: JSON.stringify(productData.thumbnail),
         }),
         status: (() => {
-          const s = (cleanFields.status || productData.status || "under review").toLowerCase();
+          const s = (
+            cleanFields.status ||
+            productData.status ||
+            "under review"
+          ).toLowerCase();
           const STATUS_MAP = {
-            "draft": "draft",
-            "submitted": "submitted",
+            draft: "draft",
+            submitted: "submitted",
             "under review": "under review",
             "needs fix": "need fix",
             "need fix": "need fix",
-            "approved": "approved",
-            "exported": "exported",
-            "confirmed": "confirmed",
-            "archived": "archived",
+            approved: "approved",
+            exported: "exported",
+            confirmed: "confirmed",
+            archived: "archived",
             "request delete": "request delete",
           };
           return STATUS_MAP[s] || "under review";
@@ -188,32 +192,72 @@ export async function updateProduct(id, data, user) {
     },
   ]);
 
-  // 4️⃣ Update Variants (if any provided in the update payload)
-  if (variants.length > 0) {
-    const variantPayload = variants
+  // 4️⃣ Handle Variants: Create new, update existing, delete removed
+  if (variants !== undefined) {
+    // ── Fetch ALL variants and filter in JS (linked record field —
+    //    ARRAYJOIN joins primary field text, not rec IDs, so formula won't work)
+    const allVariantRecords = await base(VARIANT_TABLE).select().all();
+    const existingVariantRecords = allVariantRecords.filter((v) => {
+      const linkedIds = v.fields.product_id || [];
+      return linkedIds.includes(id); // id is the Airtable record ID of the product
+    });
+
+    const existingIds = existingVariantRecords.map((r) => r.id);
+    const incomingIds = variants.filter((v) => v._id).map((v) => v._id);
+
+    console.log("🔍 ~ updateProduct ~ existingIds:", existingIds);
+    console.log("🔍 ~ updateProduct ~ incomingIds:", incomingIds);
+
+    // ── 4a. DELETE variants that are no longer in the payload
+    const toDelete = existingIds.filter((eid) => !incomingIds.includes(eid));
+    if (toDelete.length > 0) {
+      for (let i = 0; i < toDelete.length; i += 10) {
+        await base(VARIANT_TABLE).destroy(toDelete.slice(i, i + 10));
+      }
+      console.log("🗑️ ~ updateProduct ~ deleted variants:", toDelete);
+    }
+
+    // ── 4b. UPDATE existing variants
+    const toUpdate = variants
+      .filter((v) => v._id)
       .map((v) => {
         const fields = {};
         if (v.name !== undefined) fields.name = v.name;
         if (v.price !== undefined) fields.price = Number(v.price);
         if (v.cost !== undefined) fields.cost = Number(v.cost);
-        if (v.avail_today !== undefined)
-          fields.avail_today = Number(v.avail_today);
+        if (v.avail_today !== undefined) fields.avail_today = Number(v.avail_today);
         if (v.out_of_stock !== undefined) fields.out_of_stock = v.out_of_stock;
-
-        if (!v._id || Object.keys(fields).length === 0) return null;
+        if (v.pos !== undefined) fields.pos = Number(v.pos); // ✅ persist drag order
         return { id: v._id, fields };
       })
-      .filter(Boolean);
-    console.log("🚀 ~ updateProduct ~ variantPayload:", variantPayload);
+      .filter((v) => Object.keys(v.fields).length > 0);
 
-    // ✅ Batch into chunks of 10 (Airtable hard limit)
-    const chunks = [];
-    for (let i = 0; i < variantPayload.length; i += 10) {
-      chunks.push(variantPayload.slice(i, i + 10));
+    if (toUpdate.length > 0) {
+      for (let i = 0; i < toUpdate.length; i += 10) {
+        await base(VARIANT_TABLE).update(toUpdate.slice(i, i + 10));
+      }
+      console.log("✏️ ~ updateProduct ~ updated variants:", toUpdate.length);
     }
 
-    for (const chunk of chunks) {
-      await base(VARIANT_TABLE).update(chunk);
+    // ── 4c. CREATE new variants (those without an _id)
+    const toCreate = variants.filter((v) => !v._id);
+    if (toCreate.length > 0) {
+      const createPayload = toCreate.map((v, i) => ({
+        fields: {
+          name: v.name,
+          price: Number(v.price),
+          cost: Number(v.cost),
+          avail_today: Number(v.avail_today || 0),
+          out_of_stock: v.out_of_stock || false,
+          product_id: [id], // link to the product using its Airtable record ID
+          pos: incomingIds.length + i + 1,
+        },
+      }));
+
+      for (let i = 0; i < createPayload.length; i += 10) {
+        await base(VARIANT_TABLE).create(createPayload.slice(i, i + 10));
+      }
+      console.log("➕ ~ updateProduct ~ created variants:", toCreate.length);
     }
   }
 
@@ -243,6 +287,7 @@ export async function getProducts({
   // ✅ Status filter — use TRUE()/FALSE() for Airtable checkbox fields
   if (status !== undefined) {
     filters.push(`{status} = "${status}"`);
+    console.log("🚀 ~ getProducts ~ status:", status);
   } else {
     // 🛡️ SECURITY: By default, never show 'draft' products to admins in the general list.
     filters.push(`NOT({status} = "draft")`);
@@ -350,8 +395,10 @@ export async function getProducts({
 
     return {
       ...product,
-      vendorProfile: vendor || null, // ✅ directly attach
-      variants: variantsByProduct[rawRecord.id] || [],
+      vendorProfile: vendor || null,
+      variants: (variantsByProduct[rawRecord.id] || []).sort(
+        (a, b) => (a.pos || 0) - (b.pos || 0),
+      ),
     };
   });
 
@@ -470,7 +517,9 @@ export async function getMineProducts({
     return {
       ...product,
       vendorProfile,
-      variants: variantsByProduct[rawRecord.id] || [],
+      variants: (variantsByProduct[rawRecord.id] || []).sort(
+        (a, b) => (a.pos || 0) - (b.pos || 0),
+      ),
     };
   });
 
@@ -506,15 +555,15 @@ export async function updateProductStatus(id, status, notes = "") {
   }
 
   const STATUS_MAP = {
-    "draft": "draft",
-    "submitted": "submitted",
+    draft: "draft",
+    submitted: "submitted",
     "under review": "under review",
     "needs fix": "need fix",
     "need fix": "need fix",
-    "approved": "approved",
-    "exported": "exported",
-    "confirmed": "confirmed",
-    "archived": "archived",
+    approved: "approved",
+    exported: "exported",
+    confirmed: "confirmed",
+    archived: "archived",
     "request delete": "request delete",
   };
 
@@ -603,7 +652,9 @@ export async function getProduct(id) {
 
   // 3️⃣ Merge
   const product = mapRecord(record);
-  const variants = matchedVariants.map(mapRecord);
+  const variants = matchedVariants
+    .map(mapRecord)
+    .sort((a, b) => (a.pos || 0) - (b.pos || 0));
 
   return {
     ...product,
@@ -631,16 +682,37 @@ export async function updateStatus(id, status) {
 // ─────────────────────────────────────────────
 // DELETE
 // ─────────────────────────────────────────────
-export async function deleteProduct(id) {
+export async function deleteProduct(id, user = null) {
   let vendorUserId = null;
   let productName = "A product";
 
   try {
     const productRecord = await base(TABLE).find(id);
-    vendorUserId = productRecord?.fields?.user_id?.[0];
+    vendorUserId = productRecord?.fields?.user_id?.[0]; // Internal Airtable ID from linked record
     productName = productRecord?.fields?.product_name || productName;
+
+    if (user && user.role === "vendor") {
+      // 1️⃣ Enforce Ownership!
+      if (vendorUserId !== user.id && vendorUserId) {
+        const err = new Error("You do not have permission to delete this product.");
+        err.status = 403;
+        throw err;
+      }
+      
+      // 2️⃣ Enforce Status! 
+      // Vendor can only delete if draft
+      const status = (productRecord?.fields?.status || "").toLowerCase();
+      if (status !== "draft") {
+        const err = new Error("Vendors can only permanently delete 'draft' products.");
+        err.status = 403;
+        throw err;
+      }
+    }
   } catch (err) {
-    // Ignore if not found before deletion
+    if (err.status) throw err;
+    const error = new Error("Product not found");
+    error.status = 404;
+    throw error;
   }
 
   await base(TABLE).destroy([id]);

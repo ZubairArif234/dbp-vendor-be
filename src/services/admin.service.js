@@ -18,6 +18,7 @@ export async function getVendors({
   region,
   // is_banned,
 }) {
+  console.log("🚀 ~ getVendors ~ status:", status);
   let filters = [];
 
   // 🔍 Search (vendor fields only)
@@ -28,6 +29,7 @@ export async function getVendors({
       `OR(
         FIND(LOWER("${s}"), LOWER({vendor_name})),
         FIND(LOWER("${s}"), LOWER({business_email}))
+       
       )`,
     );
   }
@@ -111,7 +113,7 @@ export async function getVendors({
     const user = u.fields;
 
     // ❌ Filter here (IMPORTANT)
-    if (status && user.status !== status) return;
+    if (status && user.status !== status?.toLowerCase()) return;
     // if (
     //   typeof parsedIsBanned === "boolean" &&
     //   user.is_banned !== parsedIsBanned
@@ -261,8 +263,11 @@ export async function updateVendorDetails(id, details) {
   if (details.phone !== undefined)
     fieldsToUpdate.business_phone = details.phone;
   if (details.website !== undefined) fieldsToUpdate.website = details.website;
-  if (details.address !== undefined)
+  if (details.office_address !== undefined) {
+    fieldsToUpdate.office_address = details.office_address;
+  } else if (details.address !== undefined) {
     fieldsToUpdate.office_address = details.address;
+  }
   if (details.deliveryType !== undefined)
     fieldsToUpdate.delivery_type = details.deliveryType;
   if (details.logistics !== undefined)
@@ -319,17 +324,32 @@ export async function updateVendorDetails(id, details) {
  * @returns {Promise<Array<{id: string, name: string}>>}
  */
 export async function getApprovedVendorsOptions() {
-  const records = await base(USER_TABLE_NAME)
+  const userRecords = await base(USER_TABLE_NAME)
     .select({
       filterByFormula: `AND({role} = "vendor", {status} = "approved")`,
       fields: ["full_name", "id"],
     })
     .all();
 
-  return records.map((r) => ({
-    id: r.fields.id, // Return custom UUID for frontend filtering
-    name: r.fields.full_name,
-  }));
+  if (userRecords.length === 0) return [];
+
+  const vendorProfiles = await base(VENDOR_TABLE_NAME)
+    .select({
+      fields: ["vendor_name", "user_id"],
+    })
+    .all();
+
+  return userRecords.map((r) => {
+    // Link using the internal Airtable record ID
+    const profile = vendorProfiles.find(
+      (v) => v.fields.user_id && v.fields.user_id.includes(r.id),
+    );
+
+    return {
+      id: r.fields.id, // Return custom UUID for frontend filtering
+      name: profile?.fields?.vendor_name || r.fields.full_name,
+    };
+  });
 }
 
 // ─── Vendor Statuses Management ──────────────────────────────────────────────

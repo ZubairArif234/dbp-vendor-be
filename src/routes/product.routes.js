@@ -27,6 +27,6 @@ router.patch("/:id/status", controller.updateStatus);
 router.patch("/:id/notes", controller.addNotes);
 
 // DELETE
-router.delete("/:id", controller.remove);
+router.delete("/:id", auth, controller.remove);
 
 export default router;
