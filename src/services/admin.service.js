@@ -444,7 +444,7 @@ export async function getAdminStats() {
 
   // 2. Total Products
   const productRecords = await base("products")
-    .select({ fields: ["status"] })
+    .select({ fields: ["status"], filterByFormula: "NOT({status} = 'draft')" })
     .all();
   const totalProducts = productRecords.length;
 
