@@ -75,14 +75,16 @@ export async function createProduct(data, user_id) {
     createdVariants = variantRecords.map(mapRecord);
   }
 
-  // 🔔 Notify Admins
-  await notifyAdmins({
-    type: "PRODUCT_UNDER_REVIEW",
-    title: "New Product Uploaded",
-    message: `A new product '${productData.product_name}' was uploaded and needs review.`,
-    link: "/admin/products",
-    emailData: { template: "admin-notice" },
-  });
+  if (productData?.status != "draft") {
+    // 🔔 Notify Admins
+    await notifyAdmins({
+      type: "PRODUCT_UNDER_REVIEW",
+      title: "New Product Uploaded",
+      message: `A new product '${productData.product_name}' was uploaded and needs review.`,
+      link: "/admin/products",
+      emailData: { template: "admin-notice" },
+    });
+  }
 
   return {
     product: mapRecord(productRecord[0]),
@@ -96,12 +98,26 @@ export async function createProduct(data, user_id) {
 export async function updateProduct(id, data, user) {
   const { variants = [], ...productData } = data;
 
+  // 1️⃣ Fetch current state for comparison
+  const productRecord = await base(TABLE).find(id);
+  if (!productRecord) throw new Error("Product not found");
+
+  const allVariantRecords = await base(VARIANT_TABLE).select().all();
+  const existingVariantRecords = allVariantRecords.filter((v) => {
+    const linkedIds = v.fields.product_id || [];
+    return linkedIds.includes(id);
+  });
+  const existingIds = existingVariantRecords.map((r) => r.id);
+  const incomingIds = variants.filter((v) => v._id).map((v) => v._id);
+
+  // 2️⃣ Detection Logic
+  let hasSensitiveChanges = false;
+
   const allowedFields = [
     "product_name",
     "category",
     "discount_avail",
     "for_sale",
-    "status",
     "long_summary",
     "nutritional_facts",
     "produce_item",
@@ -114,7 +130,6 @@ export async function updateProduct(id, data, user) {
     "tax_sales",
     "warehouse",
     "supplier",
-    "status",
     "min_amount",
     "low_avail_limit",
     "margin",
@@ -125,38 +140,110 @@ export async function updateProduct(id, data, user) {
     Object.entries(productData).filter(([key]) => allowedFields.includes(key)),
   );
 
-  // 1️⃣ Determine if sensitive fields are being updated (anything except avail_today in variants)
-  const productFields = Object.keys(productData).filter((k) => k !== "id");
-  const hasProductUpdates = productFields.length > 0;
+  // A. Detect Product-level changes
+  for (const key of allowedFields) {
+    if (productData[key] !== undefined) {
+      let newVal = productData[key];
+      let oldVal = productRecord.fields[key];
 
-  // Check if any variant field other than 'id' or 'avail_today' is updated
-  const hasOtherVariantUpdates = variants.some(
-    (v) =>
-      v &&
-      typeof v === "object" &&
-      Object.keys(v).some(
-        (k) => k !== "id" && k !== "_id" && k !== "avail_today",
-      ),
-  );
+      let changed = false;
+      if (key === "thumbnail") {
+        const newThumb = JSON.stringify(newVal || []);
+        const oldThumb = oldVal || "[]";
+        if (newThumb !== oldThumb) changed = true;
+      } else if (["min_amount", "low_avail_limit", "margin"].includes(key)) {
+        if (Number(newVal) !== Number(oldVal)) changed = true;
+      } else {
+        // String or boolean comparison
+        const v1 =
+          newVal === null || newVal === undefined ? "" : String(newVal).trim();
+        const v2 =
+          oldVal === null || oldVal === undefined ? "" : String(oldVal).trim();
+        if (v1 !== v2) changed = true;
+      }
 
-  // 2️⃣ Only set status to 'under review' if user is vendor
-  if (
-    user?.role === "vendor" &&
-    (hasProductUpdates || hasOtherVariantUpdates)
-  ) {
-    productData.status = "under review";
-
-    // 🔔 Notify Admins
-    await notifyAdmins({
-      type: "PRODUCT_UNDER_REVIEW",
-      title: "Product Edited",
-      message: `The product '${cleanFields.product_name || productData.product_name || "A product"}' was edited and needs review.`,
-      link: "/admin/products",
-      emailData: { template: "admin-notice" },
-    });
+      if (changed) {
+        console.log(`🔍 ~ Sensitive change in product field [${key}]:`, {
+          old: productRecord.fields[key],
+          new: productData[key],
+        });
+        hasSensitiveChanges = true;
+      }
+    }
   }
 
-  // 3️⃣ Update Product
+  // B. Detect Variant Additions or Removals
+  const hasAdded = variants.some((v) => !v._id);
+  const hasRemoved = existingIds.some((eid) => !incomingIds.includes(eid));
+
+  if (hasAdded || hasRemoved) {
+    console.log("🔄 ~ Variant structure change detected:", {
+      hasAdded,
+      hasRemoved,
+    });
+    hasSensitiveChanges = true;
+  }
+
+  // C. Detect Sensitive Variant Edits (anything except avail_today and out_of_stock)
+  if (!hasSensitiveChanges) {
+    for (const v of variants) {
+      if (v._id) {
+        const existing = existingVariantRecords.find((r) => r.id === v._id);
+        if (existing) {
+          const sensitiveFields = ["name", "price", "cost", "pos"];
+          for (const f of sensitiveFields) {
+            if (v[f] !== undefined) {
+              let newVal = v[f];
+              let oldVal = existing.fields[f];
+              let changed = false;
+
+              if (["price", "cost", "pos"].includes(f)) {
+                if (Number(newVal) !== Number(oldVal)) changed = true;
+              } else {
+                const v1 =
+                  newVal === null || newVal === undefined
+                    ? ""
+                    : String(newVal).trim();
+                const v2 =
+                  oldVal === null || oldVal === undefined
+                    ? ""
+                    : String(oldVal).trim();
+                if (v1 !== v2) changed = true;
+              }
+
+              if (changed) {
+                console.log(
+                  `🔍 ~ Sensitive change in variant [${v._id}] field [${f}]:`,
+                  { old: oldVal, new: newVal },
+                );
+                hasSensitiveChanges = true;
+              }
+            }
+            if (hasSensitiveChanges) break;
+          }
+        }
+      }
+      if (hasSensitiveChanges) break;
+    }
+  }
+
+  // 3️⃣ Only set status to 'under review' if user is vendor and sensitive changes occurred
+  if (user?.role === "vendor" && hasSensitiveChanges) {
+    productData.status = "under review";
+
+    // 🔔 Notify Admins if not already under review
+    if (productRecord.fields.status !== "under review") {
+      await notifyAdmins({
+        type: "PRODUCT_UNDER_REVIEW",
+        title: "Product Edited",
+        message: `The product '${productData.product_name || productRecord.fields.product_name || "A product"}' was edited and needs review.`,
+        link: "/admin/products",
+        emailData: { template: "admin-notice" },
+      });
+    }
+  }
+
+  // 5️⃣ Update Product
   const record = await base(TABLE).update([
     {
       id,
@@ -167,8 +254,8 @@ export async function updateProduct(id, data, user) {
         }),
         status: (() => {
           const s = (
-            cleanFields.status ||
             productData.status ||
+            productRecord.fields.status ||
             "under review"
           ).toLowerCase();
           const STATUS_MAP = {
@@ -185,25 +272,22 @@ export async function updateProduct(id, data, user) {
           };
           return STATUS_MAP[s] || "under review";
         })(),
-        min_amount: Number(productData.min_amount),
-        low_avail_limit: Number(productData.low_avail_limit),
-        margin: Number(productData.margin) || 40,
+        min_amount: Number(
+          productData.min_amount || productRecord.fields.min_amount,
+        ),
+        low_avail_limit: Number(
+          productData.low_avail_limit || productRecord.fields.low_avail_limit,
+        ),
+        margin: Number(productData.margin || productRecord.fields.margin) || 40,
       },
     },
   ]);
 
-  // 4️⃣ Handle Variants: Create new, update existing, delete removed
+  // 6️⃣ Handle Variants: Create new, update existing, delete removed
   if (variants !== undefined) {
-    // ── Fetch ALL variants and filter in JS (linked record field —
-    //    ARRAYJOIN joins primary field text, not rec IDs, so formula won't work)
-    const allVariantRecords = await base(VARIANT_TABLE).select().all();
-    const existingVariantRecords = allVariantRecords.filter((v) => {
-      const linkedIds = v.fields.product_id || [];
-      return linkedIds.includes(id); // id is the Airtable record ID of the product
-    });
-
-    const existingIds = existingVariantRecords.map((r) => r.id);
-    const incomingIds = variants.filter((v) => v._id).map((v) => v._id);
+    // ── existingVariantRecords is already fetched above
+    // const existingIds = existingVariantRecords.map((r) => r.id);
+    // const incomingIds = variants.filter((v) => v._id).map((v) => v._id);
 
     console.log("🔍 ~ updateProduct ~ existingIds:", existingIds);
     console.log("🔍 ~ updateProduct ~ incomingIds:", incomingIds);
@@ -225,7 +309,8 @@ export async function updateProduct(id, data, user) {
         if (v.name !== undefined) fields.name = v.name;
         if (v.price !== undefined) fields.price = Number(v.price);
         if (v.cost !== undefined) fields.cost = Number(v.cost);
-        if (v.avail_today !== undefined) fields.avail_today = Number(v.avail_today);
+        if (v.avail_today !== undefined)
+          fields.avail_today = Number(v.avail_today);
         if (v.out_of_stock !== undefined) fields.out_of_stock = v.out_of_stock;
         if (v.pos !== undefined) fields.pos = Number(v.pos); // ✅ persist drag order
         return { id: v._id, fields };
@@ -580,6 +665,14 @@ export async function updateProductStatus(id, status, notes = "") {
 
   const productRecord = await base(TABLE).find(id);
   if (!productRecord) throw new Error("Product not found");
+
+  const currentStatus = (productRecord.fields.status || "").toLowerCase();
+  if (currentStatus === exactStatus.toLowerCase()) {
+    const error = new Error(`Product is already of status: ${exactStatus}`);
+    error.status = 400;
+    throw error;
+  }
+
   const vendorUserId = productRecord.fields.user_id?.[0];
 
   const record = await base(TABLE).update([
@@ -685,25 +778,31 @@ export async function updateStatus(id, status) {
 export async function deleteProduct(id, user = null) {
   let vendorUserId = null;
   let productName = "A product";
+  let status = "";
 
   try {
     const productRecord = await base(TABLE).find(id);
     vendorUserId = productRecord?.fields?.user_id?.[0]; // Internal Airtable ID from linked record
     productName = productRecord?.fields?.product_name || productName;
+    status = productRecord?.fields?.status || "";
 
     if (user && user.role === "vendor") {
       // 1️⃣ Enforce Ownership!
       if (vendorUserId !== user.id && vendorUserId) {
-        const err = new Error("You do not have permission to delete this product.");
+        const err = new Error(
+          "You do not have permission to delete this product.",
+        );
         err.status = 403;
         throw err;
       }
-      
-      // 2️⃣ Enforce Status! 
+
+      // 2️⃣ Enforce Status!
       // Vendor can only delete if draft
       const status = (productRecord?.fields?.status || "").toLowerCase();
       if (status !== "draft") {
-        const err = new Error("Vendors can only permanently delete 'draft' products.");
+        const err = new Error(
+          "Vendors can only permanently delete 'draft' products.",
+        );
         err.status = 403;
         throw err;
       }
@@ -718,14 +817,16 @@ export async function deleteProduct(id, user = null) {
   await base(TABLE).destroy([id]);
 
   if (vendorUserId) {
-    // 🔔 Notify Vendor
-    await dispatchNotification(vendorUserId, {
-      type: "PRODUCT_DELETION_COMPLETED",
-      title: "Product Deleted",
-      message: `Your product '${productName}' was successfully deleted by the admin.`,
-      link: "/vendor/products",
-      emailData: { template: "vendor-notice" },
-    });
+    if (status != "draft") {
+      // 🔔 Notify Vendor
+      await dispatchNotification(vendorUserId, {
+        type: "PRODUCT_DELETION_COMPLETED",
+        title: "Product Deleted",
+        message: `Your product '${productName}' was successfully deleted by the admin.`,
+        link: "/vendor/products",
+        emailData: { template: "vendor-notice" },
+      });
+    }
   }
 
   return { success: true };

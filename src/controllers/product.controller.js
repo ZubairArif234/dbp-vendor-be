@@ -7,7 +7,7 @@ export const create = async (req, res) => {
     const data = await service.createProduct(req.body, user_id);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -17,7 +17,7 @@ export const update = async (req, res) => {
     const data = await service.updateProduct(req.params.id, req.body, req.user);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -27,7 +27,7 @@ export const getAll = async (req, res) => {
     const data = await service.getProducts(req.query);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -37,7 +37,7 @@ export const getSingle = async (req, res) => {
     const data = await service.getProduct(req.params.id);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -51,7 +51,7 @@ export const updateProductStatus = async (req, res) => {
     );
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ success: false, message: err.message });
   }
 };
 
@@ -62,7 +62,7 @@ export const getMineProducts = async (req, res) => {
     const data = await service.getMineProducts({ ...req.query, user_id });
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -73,7 +73,7 @@ export const getStats = async (req, res) => {
     const data = await service.getVendorStats(user_id);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -84,7 +84,7 @@ export const updateStatus = async (req, res) => {
     const data = await service.updateStatus(req.params.id, status);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -94,7 +94,7 @@ export const remove = async (req, res) => {
     await service.deleteProduct(req.params.id, req.user);
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
@@ -105,6 +105,6 @@ export const addNotes = async (req, res) => {
     const data = await service.addNotes(req.params.id, note);
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
