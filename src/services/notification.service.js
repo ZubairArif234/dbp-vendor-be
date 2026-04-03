@@ -134,7 +134,7 @@ export async function notifyAdmins(data) {
  */
 export async function getNotifications(userId, limit = 20) {
   console.log("🚀 ~ getNotifications ~ userId:", userId);
-  
+
   // Airtable linked fields resolve to their primary field value (the custom UUID) in formulas,
   // NOT the internal `recXXXX` ID. So we must convert the `recXXXX` from the JWT back to the custom UUID.
   let searchId = userId;
@@ -147,16 +147,27 @@ export async function getNotifications(userId, limit = 20) {
 
   const records = await base(NOTIFICATION_TABLE)
     .select({
+      fields: [
+        "id",
+        "title",
+        "message",
+        "link",
+        "is_read",
+        "type",
+        "user_id",
+        "created_at",
+      ],
       filterByFormula: `FIND("${searchId}", {user_id}&"") > 0`,
       sort: [{ field: "created_at", direction: "desc" }],
       maxRecords: limit,
     })
     .all();
+  console.log("🚀 ~ getNotifications ~ records:", records);
 
   return records.map((r) => ({
     id: r.id,
     ...r.fields,
-    created_at: r.createdTime,
+    created_at: r.get("created_at"),
   }));
 }
 
