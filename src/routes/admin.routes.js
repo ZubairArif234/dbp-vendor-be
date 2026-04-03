@@ -23,6 +23,7 @@ router.get("/vendors/options", adminController.getApprovedVendorsOptions);
 router.patch("/vendors/:id/approval", adminController.updateVendorApproval);
 router.patch("/vendors/:id/ban", adminController.banUnbanVendor);
 router.patch("/vendors/:id/details", adminController.updateVendorMarginAndNote);
+router.get("/stats", adminController.getAdminStats);
 
 // ─── Vendor Statuses ─────────────────────────────────────────────────────────
 router.get("/vendor-statuses", adminController.getVendorStatuses);

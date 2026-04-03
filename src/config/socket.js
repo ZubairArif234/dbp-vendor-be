@@ -30,6 +30,13 @@ export function initSocket(httpServer) {
     // Register all event handlers defined in src/sockets/
     registerSocketHandlers(io, socket);
 
+    // 🚀 Automatically join a personal room based on userId (if provided in auth)
+    const userId = socket.handshake.auth?.userId || socket.handshake.query?.userId;
+    if (userId) {
+      socket.join(userId);
+      console.log(`⚡ Socket ${socket.id} joined personal room: ${userId}`);
+    }
+
     socket.on("disconnect", (reason) => {
       console.log(`⚡ Socket disconnected: ${socket.id} (${reason})`);
     });

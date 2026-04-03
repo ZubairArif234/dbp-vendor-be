@@ -8,7 +8,7 @@
  */
 
 import { registerChatHandlers } from "./chat.handler.js";
-// import { registerNotificationHandlers } from "./notification.handler.js";
+import { registerNotificationHandlers } from "./notification.handler.js";
 
 /**
  * @param {import("socket.io").Server} io   – the Socket.IO server instance
@@ -17,5 +17,5 @@ import { registerChatHandlers } from "./chat.handler.js";
 export default function registerSocketHandlers(io, socket) {
   // Register handler groups
   registerChatHandlers(io, socket);
-  // registerNotificationHandlers(io, socket);
+  registerNotificationHandlers(io, socket);
 }

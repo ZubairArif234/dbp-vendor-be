@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Gather & Deliver - Notice</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background-color:#f4f4f7; font-family: Arial, sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7; padding:40px;">
+    <tr>
+      <td align="center">
+
+        <!-- Main Container -->
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff; border-radius:8px; border: 1px solid #e1e1e1;">
+
+          <!-- Header -->
+          <tr>
+            <td align="center" style="padding: 30px 30px 20px 30px;">
+                <img src="https://res.cloudinary.com/drqtz5s5m/image/upload/v1775055727/logo_wjguc5.png" alt="Logo" style="height:120px;" />  
+            </td>
+          </tr>
+
+          <!-- Title -->
+          <tr>
+            <td align="center" style="padding: 0 30px 20px 30px;">
+              <h3 style="margin:0; color:#555;">Gather & Deliver Notification</h3>
+            </td>
+          </tr>
+
+          <!-- Message -->
+          <tr>
+            <td style="color:#555; font-size:16px; line-height:1.6; text-align:left; padding: 0 30px;">
+              <p>Hello Vendor,</p>
+              <p>The status of your profile or product has been updated by the Admin:</p>
+
+              <!-- Event Details Box -->
+              <div style="background-color:#f9fafb; padding:20px; border-radius:6px; margin: 20px 0;">
+                <p style="margin-top:0;"><strong style="color:#526229;">Update:</strong> <%= title %></p>
+                <p style="margin-bottom:0;"><strong style="color:#526229;">Status:</strong> <%= message %></p>
+              </div>
+              
+              <% if (locals.notes && locals.notes.trim()) { %>
+              <p style="margin-bottom: 5px;"><strong style="color:#526229;">Admin Feedback:</strong></p>
+              <div style="background-color:#f5f8ea; border-left: 4px solid #526229; padding: 15px; margin: 10px 0; font-style: italic; color: #3b471c;">
+                "<%= notes %>"
+              </div>
+              <% } %>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 20px 30px 30px 30px; text-align:center; font-size:12px; color:#aaa; border-top: 1px solid #eee;">
+              &copy; <%= new Date().getFullYear() %> Gather & Deliver. All rights reserved.
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

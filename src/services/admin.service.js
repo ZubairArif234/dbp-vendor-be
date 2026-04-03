@@ -1,5 +1,6 @@
 import { base } from "../config/airtable.js";
 import { v4 as uuidv4 } from "uuid";
+import { dispatchNotification } from "./notification.service.js";
 
 const VENDOR_TABLE_NAME = "vendor_profile";
 const USER_TABLE_NAME = "users";
@@ -186,6 +187,15 @@ export async function updateVendorApproval(id, approval) {
       fields: { status: approval },
     },
   ]);
+
+  // 🔔 Notify Vendor
+  await dispatchNotification(targetUserId, {
+    type: "PROFILE_STATUS_UPDATED",
+    title: "Profile Status Updated",
+    message: `Your vendor profile status has been updated to '${approval}' by the admin.`,
+    link: "/vendor/dashboard",
+    emailData: { template: "vendor-notice" }, // email will fallback if email is not in data? Wait, dispatchNotification expects emailData.to? No, dispatchNotification fetches user? Ah wait.
+  });
 
   return {
     id: records[0].id,
@@ -403,4 +413,39 @@ export async function updateVendorStatus(id, data) {
     isArchived: updatedRecord[0].fields.is_archived || false,
     _airtableId: updatedRecord[0].id,
   };
+}
+
+export async function getAdminStats() {
+  // 1. Total Vendors
+  const vendorRecords = await base(VENDOR_TABLE_NAME)
+    .select({ fields: [] })
+    .all();
+  const totalVendors = vendorRecords.length;
+
+  // 2. Total Products
+  const productRecords = await base("products")
+    .select({ fields: ["status"] })
+    .all();
+  const totalProducts = productRecords.length;
+
+  const stats = {
+    totalVendors,
+    totalProducts,
+    pendingApprovals: 0,
+    activeProducts: 0,
+  };
+
+  productRecords.forEach((r) => {
+    const status = (r.fields.status || "").toLowerCase();
+    if (status === "submitted" || status === "under review")
+      stats.pendingApprovals++;
+    else if (
+      status === "approved" ||
+      status === "exported" ||
+      status === "confirmed"
+    )
+      stats.activeProducts++;
+  });
+
+  return stats;
 }

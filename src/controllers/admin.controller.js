@@ -159,3 +159,12 @@ export async function deleteProduct(req, res) {
       .json({ success: false, message: err.message });
   }
 }
+
+export async function getAdminStats(req, res) {
+  try {
+    const data = await adminService.getAdminStats();
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+}

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { base } from "../config/airtable.js";
+import { notifyAdmins } from "./notification.service.js";
 
 const TABLE_NAME = "vendor_profile";
 const USER_TABLE_NAME = "users";
@@ -55,6 +56,15 @@ export async function createVendorProfile({
         fields: { is_profile_completed: true },
       },
     ]);
+
+    // 🔔 Notify Admins
+    await notifyAdmins({
+      type: "PROFILE_COMPLETED",
+      title: "Vendor Profile Completed",
+      message: `The vendor '${vendor_name}' has completed their profile setup.`,
+      link: "/admin/vendors",
+      emailData: { template: "admin-notice" },
+    });
   }
 
   // 4. Return the new vendor profile

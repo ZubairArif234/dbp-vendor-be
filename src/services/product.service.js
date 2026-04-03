@@ -1,5 +1,7 @@
 import Airtable from "airtable";
 import { v4 as uuidv4 } from "uuid";
+import { dispatchNotification, notifyAdmins } from "./notification.service.js";
+
 const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
   process.env.AIRTABLE_BASE_ID,
 );
@@ -73,6 +75,15 @@ export async function createProduct(data, user_id) {
     createdVariants = variantRecords.map(mapRecord);
   }
 
+  // 🔔 Notify Admins
+  await notifyAdmins({
+    type: "PRODUCT_UNDER_REVIEW",
+    title: "New Product Uploaded",
+    message: `A new product '${productData.product_name}' was uploaded and needs review.`,
+    link: "/admin/products",
+    emailData: { template: "admin-notice" },
+  });
+
   return {
     product: mapRecord(productRecord[0]),
     variants: createdVariants,
@@ -134,6 +145,15 @@ export async function updateProduct(id, data, user) {
     (hasProductUpdates || hasOtherVariantUpdates)
   ) {
     productData.status = "under review";
+
+    // 🔔 Notify Admins
+    await notifyAdmins({
+      type: "PRODUCT_UNDER_REVIEW",
+      title: "Product Edited",
+      message: `The product '${cleanFields.product_name || productData.product_name || "A product"}' was edited and needs review.`,
+      link: "/admin/products",
+      emailData: { template: "admin-notice" },
+    });
   }
 
   // 3️⃣ Update Product
@@ -145,7 +165,22 @@ export async function updateProduct(id, data, user) {
         ...(productData.thumbnail && {
           thumbnail: JSON.stringify(productData.thumbnail),
         }),
-        status: cleanFields.status || productData.status || "under review",
+        status: (() => {
+          const s = (cleanFields.status || productData.status || "under review").toLowerCase();
+          const STATUS_MAP = {
+            "draft": "draft",
+            "submitted": "submitted",
+            "under review": "under review",
+            "needs fix": "need fix",
+            "need fix": "need fix",
+            "approved": "approved",
+            "exported": "exported",
+            "confirmed": "confirmed",
+            "archived": "archived",
+            "request delete": "request delete",
+          };
+          return STATUS_MAP[s] || "under review";
+        })(),
         min_amount: Number(productData.min_amount),
         low_avail_limit: Number(productData.low_avail_limit),
         margin: Number(productData.margin) || 40,
@@ -333,6 +368,7 @@ export async function getMineProducts({
   status,
   category,
   supplier,
+  stock,
   out_of_stock,
   user_id,
   page = 1,
@@ -374,46 +410,51 @@ export async function getMineProducts({
     return linkedUsers.includes(user_id);
   });
 
-  // 4️⃣ Filter by status in JS (same pattern as getVendors)
-  if (status && status.trim()) {
+  // 4️⃣ Filter by status in JS
+  if (status && status.trim() && status !== "all") {
     filtered = filtered.filter((r) => r.fields.status === status.trim());
   }
 
-  // 5️⃣ Pagination
-  const total = filtered.length;
-  const totalPages = Math.ceil(total / pageSize);
-  const start = (Number(page) - 1) * Number(pageSize);
-  const paginated = filtered.slice(start, start + Number(pageSize));
-  const products = paginated.map(mapRecord);
-
-  // 6️⃣ Early return
-  if (products.length === 0) {
-    return { data: [], total, page: Number(page), totalPages };
+  // 5️⃣ Fetch variants for ALL filtered products to calculate total stock
+  const airtableProductIds = filtered.map((r) => r.id);
+  if (airtableProductIds.length === 0) {
+    return { data: [], total: 0, page: Number(page), totalPages: 0 };
   }
 
-  // 7️⃣ Fetch variants for this page's products only
-  // 7️⃣ Fetch variants — match against Airtable record IDs (not mapped UUIDs)
-  const airtableProductIds = paginated.map((r) => r.id); // ✅ raw rec... IDs
-
   const allVariantRecords = await base(VARIANT_TABLE).select().all();
-
-  const matchedVariants = allVariantRecords.filter((v) => {
-    const linkedProducts = v.fields.product_id || [];
-    return linkedProducts.some((pid) => airtableProductIds.includes(pid));
-  });
-
-  const variants = matchedVariants.map(mapRecord);
-
-  // 8️⃣ Group variants by Airtable product rec ID
   const variantsByProduct = {};
-  for (const variant of matchedVariants) {
-    const linkedIds = variant.fields.product_id || []; // ✅ raw fields, not mapped
+  for (const variant of allVariantRecords) {
+    const linkedIds = variant.fields.product_id || [];
     for (const pid of linkedIds) {
-      if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
-      variantsByProduct[pid].push(mapRecord(variant));
+      if (airtableProductIds.includes(pid)) {
+        if (!variantsByProduct[pid]) variantsByProduct[pid] = [];
+        variantsByProduct[pid].push(mapRecord(variant));
+      }
     }
   }
 
+  // 6️⃣ Filter by stock in JS
+  if (stock && stock !== "all") {
+    filtered = filtered.filter((r) => {
+      const variants = variantsByProduct[r.id] || [];
+      const totalStock = variants.reduce(
+        (sum, v) => sum + (Number(v.avail_today) || 0),
+        0,
+      );
+
+      if (stock === "out_of_stock") return totalStock === 0;
+      if (stock === "in_stock") return totalStock > 0;
+      return true;
+    });
+  }
+
+  // 7️⃣ Pagination
+  const total = filtered.length;
+  const totalPages = Math.ceil(total / Number(pageSize));
+  const start = (Number(page) - 1) * Number(pageSize);
+  const paginated = filtered.slice(start, start + Number(pageSize));
+
+  // 8️⃣ Merge
   const vendorRecords = await base(VENDOR_TABLE)
     .select({
       filterByFormula: `FIND("${user_id}", ARRAYJOIN({user_id}))`,
@@ -424,15 +465,15 @@ export async function getMineProducts({
     ? mapRecord(vendorRecords[0])
     : null;
 
-  // 9️⃣ Merge — use Airtable rec ID to look up, but product.id is mapped UUID
   const data = paginated.map((rawRecord) => {
     const product = mapRecord(rawRecord);
     return {
       ...product,
       vendorProfile,
-      variants: variantsByProduct[rawRecord.id] || [], // ✅ rawRecord.id = rec...
+      variants: variantsByProduct[rawRecord.id] || [],
     };
   });
+
   return {
     data,
     total,
@@ -450,6 +491,7 @@ export async function updateProductStatus(id, status, notes = "") {
     "submitted",
     "under review",
     "needs fix",
+    "need fix",
     "approved",
     "exported",
     "confirmed",
@@ -463,6 +505,21 @@ export async function updateProductStatus(id, status, notes = "") {
     );
   }
 
+  const STATUS_MAP = {
+    "draft": "draft",
+    "submitted": "submitted",
+    "under review": "under review",
+    "needs fix": "need fix",
+    "need fix": "need fix",
+    "approved": "approved",
+    "exported": "exported",
+    "confirmed": "confirmed",
+    "archived": "archived",
+    "request delete": "request delete",
+  };
+
+  const exactStatus = STATUS_MAP[status.toLowerCase()];
+
   console.log(
     "🚀 ~ updateProductStatus ~ id:",
     id,
@@ -472,17 +529,49 @@ export async function updateProductStatus(id, status, notes = "") {
     notes,
   );
 
+  const productRecord = await base(TABLE).find(id);
+  if (!productRecord) throw new Error("Product not found");
+  const vendorUserId = productRecord.fields.user_id?.[0];
+
   const record = await base(TABLE).update([
     {
       id: id,
       fields: {
-        status: status.toLowerCase(), // ✅ single select — pass string directly
+        status: exactStatus, // ✅ single select — mapped to exact casing
+
         ...(notes && { notes }),
       },
     },
   ]);
 
-  return mapRecord(record[0]);
+  const updatedProduct = mapRecord(record[0]);
+  const productName = updatedProduct.product_name || "A product";
+
+  // 🔔 Notifications
+  if (status.toLowerCase() === "request delete") {
+    // Notify Admins
+    await notifyAdmins({
+      type: "PRODUCT_DELETION_REQUEST",
+      title: "Product Deletion Requested",
+      message: `A vendor has requested to delete '${productName}'.`,
+      link: "/admin/products",
+      emailData: { template: "admin-notice" },
+    });
+  } else if (vendorUserId) {
+    // Notify Vendor (Assume Admin made the change)
+    await dispatchNotification(vendorUserId, {
+      type: "PRODUCT_STATUS_UPDATED",
+      title: "Product Status Updated",
+      message: `The status for '${productName}' is now '${status}'.`,
+      link: "/vendor/products",
+      emailData: {
+        template: "vendor-notice",
+        data: { notes },
+      },
+    });
+  }
+
+  return updatedProduct;
 }
 
 export async function getProduct(id) {
@@ -543,6 +632,62 @@ export async function updateStatus(id, status) {
 // DELETE
 // ─────────────────────────────────────────────
 export async function deleteProduct(id) {
+  let vendorUserId = null;
+  let productName = "A product";
+
+  try {
+    const productRecord = await base(TABLE).find(id);
+    vendorUserId = productRecord?.fields?.user_id?.[0];
+    productName = productRecord?.fields?.product_name || productName;
+  } catch (err) {
+    // Ignore if not found before deletion
+  }
+
   await base(TABLE).destroy([id]);
+
+  if (vendorUserId) {
+    // 🔔 Notify Vendor
+    await dispatchNotification(vendorUserId, {
+      type: "PRODUCT_DELETION_COMPLETED",
+      title: "Product Deleted",
+      message: `Your product '${productName}' was successfully deleted by the admin.`,
+      link: "/vendor/products",
+      emailData: { template: "vendor-notice" },
+    });
+  }
+
   return { success: true };
+}
+
+export async function getVendorStats(user_id) {
+  const allRecords = await base(TABLE).select().all();
+
+  const filtered = allRecords.filter((record) => {
+    const linkedUsers = record.fields.user_id || [];
+    return linkedUsers.includes(user_id);
+  });
+
+  const stats = {
+    total: filtered.length,
+    pending: 0, // submitted, under review
+    accepted: 0, // approved, exported, confirmed
+    rejected: 0, // needs fix
+    draft: 0,
+  };
+
+  filtered.forEach((r) => {
+    const status = (r.fields.status || "").toLowerCase();
+    if (status === "draft") stats.draft++;
+    else if (status === "submitted" || status === "under review")
+      stats.pending++;
+    else if (
+      status === "approved" ||
+      status === "exported" ||
+      status === "confirmed"
+    )
+      stats.accepted++;
+    else if (status === "needs fix" || status === "need fix") stats.rejected++;
+  });
+
+  return stats;
 }

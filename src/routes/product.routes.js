@@ -11,6 +11,8 @@ router.post("/", auth, controller.create);
 router.get("/", controller.getAll);
 // GET MINE PRODUCTS (filters supported)
 router.get("/mine", auth, controller.getMineProducts);
+// GET MINE STATS
+router.get("/mine/stats", auth, controller.getStats);
 // GET SINGLE
 router.get("/:id", controller.getSingle);
 

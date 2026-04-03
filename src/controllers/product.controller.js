@@ -66,6 +66,17 @@ export const getMineProducts = async (req, res) => {
   }
 };
 
+// GET MINE STATS
+export const getStats = async (req, res) => {
+  try {
+    const user_id = req.user.id;
+    const data = await service.getVendorStats(user_id);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // UPDATE STATUS
 export const updateStatus = async (req, res) => {
   try {
