@@ -19,141 +19,117 @@ export async function getVendors({
   // is_banned,
 }) {
   console.log("🚀 ~ getVendors ~ status:", status);
-  let filters = [];
 
-  // 🔍 Search (vendor fields only)
+  // ✅ 1. Build USER filters (status only — Airtable side)
+  const userFilters = [];
+  if (status) {
+    userFilters.push(`LOWER({status}) = LOWER("${status}")`);
+  }
+  const userFilterFormula =
+    userFilters.length > 0 ? `AND(${userFilters.join(",")})` : null;
+
+  // ✅ 2. Fetch ALL users sorted by created_at DESC
+  const userQuery = {
+    fields: [
+      "full_name",
+      "email",
+      "role",
+      "status",
+      "is_banned",
+      "is_profile_completed",
+      "is_email_verified",
+      "created_at",
+    ],
+    sort: [{ field: "created_at", direction: "desc" }],
+  };
+  if (userFilterFormula) {
+    userQuery.filterByFormula = userFilterFormula;
+  }
+
+  const allUserRecords = await base(USER_TABLE_NAME)
+    .select(userQuery)
+    .firstPage();
+
+  if (allUserRecords.length === 0) {
+    return { data: [], total: 0, page: Number(page), limit: Number(limit) };
+  }
+
+  // ✅ 3. Build VENDOR filters (search + region only — no user_id filter here)
+  const vendorFilters = [];
   if (search && search.trim()) {
     const s = search.trim().replace(/"/g, '\\"');
-
-    filters.push(
+    vendorFilters.push(
       `OR(
         FIND(LOWER("${s}"), LOWER({vendor_name})),
         FIND(LOWER("${s}"), LOWER({business_email}))
-       
       )`,
     );
   }
-
-  // 🌍 Region (vendor field)
   if (region && region.trim()) {
     const r = region.trim().replace(/"/g, '\\"');
-
-    filters.push(`FIND(LOWER("${r}"), LOWER({office_address}))`);
+    vendorFilters.push(`FIND(LOWER("${r}"), LOWER({office_address}))`);
   }
 
-  const filterFormula = filters.length > 0 ? `AND(${filters.join(",")})` : null;
+  const vendorFilterFormula =
+    vendorFilters.length > 0 ? `AND(${vendorFilters.join(",")})` : null;
 
-  const fetchCount = Number(page) * Number(limit);
-
-  const query = {
-    maxRecords: fetchCount,
-  };
-
-  if (filterFormula) {
-    query.filterByFormula = filterFormula;
+  // ✅ 4. Fetch ALL matching vendors (no user_id restriction — join in JS)
+  const vendorQuery = {};
+  if (vendorFilterFormula) {
+    vendorQuery.filterByFormula = vendorFilterFormula;
   }
 
-  // ✅ 1. Fetch Vendors
-  const vendorRecords = await base(VENDOR_TABLE_NAME).select(query).firstPage();
-  console.log(
-    "VENDOR FIELDS:",
-    vendorRecords.map((v) => v.fields),
-  );
-  const start = (Number(page) - 1) * Number(limit);
-  const pageVendors = vendorRecords.slice(start, start + Number(limit));
-
-  // ✅ 2. Extract user IDs
-  const userIds = pageVendors.map((v) => v.fields.user_id?.[0]).filter(Boolean);
-
-  if (userIds.length === 0) {
-    return {
-      data: [],
-      total: 0,
-      page,
-      limit,
-    };
-  }
-
-  // ✅ 3. Fetch Users
-  const userFilter = `OR(${userIds
-    .map((id) => `RECORD_ID() = "${id}"`)
-    .join(",")})`;
-
-  const userRecords = await base(USER_TABLE_NAME)
-    .select({
-      filterByFormula: userFilter,
-      fields: [
-        "full_name",
-        "email",
-        "role",
-        "status",
-        "is_banned",
-        "is_profile_completed",
-        "is_email_verified",
-        "created_at",
-      ],
-      sort: [
-        {
-          field: "created_at", // or your actual date field
-          direction: "desc", // newest first
-        },
-      ],
-    })
+  const allVendorRecords = await base(VENDOR_TABLE_NAME)
+    .select(vendorQuery)
     .firstPage();
 
-  // ✅ Parse is_banned
-  // let parsedIsBanned;
-  // if (is_banned === "true" || is_banned === true) parsedIsBanned = true;
-  // else if (is_banned === "false" || is_banned === false) parsedIsBanned = false;
+  if (allVendorRecords.length === 0) {
+    return { data: [], total: 0, page: Number(page), limit: Number(limit) };
+  }
 
-  // ✅ 4. Create filtered user map
-  const userMap = {};
+  // ✅ 5. Build vendor map keyed by user_id for fast lookup
+  const vendorByUserId = {};
+  allVendorRecords.forEach((vendor) => {
+    const userId = vendor.fields.user_id?.[0];
+    if (userId) {
+      vendorByUserId[userId] = vendor;
+    }
+  });
 
-  userRecords.forEach((u) => {
-    const user = u.fields;
+  // ✅ 6. Merge users + vendors in user sorted order (created_at DESC)
+  //        Only include users who have a matching vendor record
+  const merged = [];
+  for (const userRecord of allUserRecords) {
+    const vendor = vendorByUserId[userRecord.id];
+    if (!vendor) continue; // no vendor record for this user — skip
 
-    // ❌ Filter here (IMPORTANT)
-    if (status && user.status !== status?.toLowerCase()) return;
-    // if (
-    //   typeof parsedIsBanned === "boolean" &&
-    //   user.is_banned !== parsedIsBanned
-    // )
-    //   return;
-
-    userMap[u.id] = {
-      id: u.id,
+    const user = userRecord.fields;
+    merged.push({
+      id: userRecord.id,
       full_name: user.full_name,
       email: user.email,
       role: user.role,
       status: user.status,
-      is_banned: user.is_banned ?? false, // ✅ ensure always present
+      is_banned: user.is_banned ?? false,
       is_profile_completed: user.is_profile_completed ?? false,
       is_email_verified: user.is_email_verified ?? false,
       created_at: user.created_at,
-    };
-  });
+      profile: {
+        id: vendor.id,
+        ...vendor.fields,
+        notes: vendor.fields.notes || vendor.fields.additional_notes || "",
+      },
+    });
+  }
 
-  // ✅ 5. Merge + filter vendors
-  const data = pageVendors
-    .map((vendor) => {
-      const userId = vendor.fields.user_id?.[0];
-      const user = userMap[userId];
-      if (!user) return null;
-
-      return {
-        ...user,
-        profile: {
-          id: vendor.id,
-          ...vendor.fields,
-          notes: vendor.fields.notes || vendor.fields.additional_notes || "",
-        },
-      };
-    })
-    .filter(Boolean);
+  // ✅ 7. Paginate on the fully merged + sorted list
+  const total = merged.length;
+  const start = (Number(page) - 1) * Number(limit);
+  const data = merged.slice(start, start + Number(limit));
 
   return {
     data,
-    total: data.length, // ✅ corrected total
+    total,
     page: Number(page),
     limit: Number(limit),
   };
